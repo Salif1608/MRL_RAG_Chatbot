@@ -57,7 +57,10 @@ return s;
 function addMessage(role, text, typing=false) {
 const wrap = document.createElement('div');
 wrap.className = 'msg ' + (role === 'user' ? 'user' : 'bot');
-wrap.innerHTML = '<div class="avatar">${role === 'user' ? 'U' : 'A'}</div> <div class="bubble">${typing ? '<div class="typing"><span></span><span></span><span></span></div>' : escapeHtml(text)}</div>' ;
+wrap.innerHTML = `
+  <div class="avatar">${role === 'user' ? 'U' : 'A'}</div>
+  <div class="bubble">${typing ? '<div class="typing"><span></span><span></span><span></span></div>' : escapeHtml(text)}</div>
+`;
 chat.appendChild(wrap);
 chat.scrollTop = chat.scrollHeight;
 return wrap;
