@@ -28,111 +28,126 @@ header h1 { font-size:16px; margin:0; font-weight:600; }
 </head>
 <body>
 <div class="container">
-<header>
-<h1>RAG Chat</h1>
-<div class="muted">Ask anything about your knowledge base</div>
-</header>
-<div id="chat" class="chat"></div>
-<div class="inputbar">
-<input id="prompt" type="text" placeholder="Type your question and press Enter..." autocomplete="off" />
-<button id="send">Send</button>
-</div>
+  <header>
+    <h1>RAG Chat</h1>
+    <div class="muted">Ask anything about your knowledge base</div>
+  </header>
+  <div id="chat" class="chat"></div>
+  <div class="inputbar">
+    <input id="prompt" type="text" placeholder="Type your question and press Enter..." autocomplete="off" />
+    <button id="send">Send</button>
+  </div>
 </div>
 <script>
-const WORKER_URL = 'https://rag-chat-proxy.alvisalif1608.workers.dev'; // e.g. https://rag-chat-proxy.your-subdomain.workers.dev
+const WORKER_URL = 'https://rag-chat-proxy.alvisalif1608.workers.dev';
 const chat = document.getElementById('chat');
 const input = document.getElementById('prompt');
 const sendBtn = document.getElementById('send');
 
-// Persist a sessionId per browser tab to allow your Flow/U-KNOW to use sessions if desired
-const sessionId = (() => {
-try {
-const k = 'rag_chat_session';
-let s = sessionStorage.getItem(k);
-if (!s) { s = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())); sessionStorage.setItem(k, s); }
-return s;
-} catch { return String(Date.now()); }
+const sessionId = (function() {
+  try {
+    var k = 'rag_chat_session';
+    var s = sessionStorage.getItem(k);
+    if (!s) {
+      s = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
+      sessionStorage.setItem(k, s);
+    }
+    return s;
+  } catch(e) {
+    return String(Date.now());
+  }
 })();
 
-function addMessage(role, text, typing=false) {
-const wrap = document.createElement('div');
-wrap.className = 'msg ' + (role === 'user' ? 'user' : 'bot');
-wrap.innerHTML = `
-  <div class="avatar">${role === 'user' ? 'U' : 'A'}</div>
-  <div class="bubble">${typing ? '<div class="typing"><span></span><span></span><span></span></div>' : escapeHtml(text)}</div>
-`;
-chat.appendChild(wrap);
-chat.scrollTop = chat.scrollHeight;
-return wrap;
+function addMessage(role, text, typing) {
+  typing = typing || false;
+  var wrap = document.createElement('div');
+  wrap.className = 'msg ' + (role === 'user' ? 'user' : 'bot');
+  var avatarText = role === 'user' ? 'U' : 'A';
+  var bubbleContent = typing
+    ? '<div class="typing"><span></span><span></span><span></span></div>'
+    : escapeHtml(text);
+  wrap.innerHTML =
+    '<div class="avatar">' + avatarText + '</div>' +
+    '<div class="bubble">' + bubbleContent + '</div>';
+  chat.appendChild(wrap);
+  chat.scrollTop = chat.scrollHeight;
+  return wrap;
 }
 
 function updateBubble(wrapper, newText) {
-const bubble = wrapper.querySelector('.bubble');
-if (bubble) bubble.innerHTML = escapeHtml(newText);
-chat.scrollTop = chat.scrollHeight;
+  var bubble = wrapper.querySelector('.bubble');
+  if (bubble) bubble.innerHTML = escapeHtml(newText);
+  chat.scrollTop = chat.scrollHeight;
 }
 
 function escapeHtml(str) {
-return (String(str || '')).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  return (String(str || '')).replace(/[&<>"']/g, function(m) {
+    var map = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    };
+    return map[m];
+  });
 }
 
 function setBusy(b) {
-input.disabled = b;
-sendBtn.disabled = b;
-if (!b) input.focus();
+  input.disabled = b;
+  sendBtn.disabled = b;
+  if (!b) input.focus();
 }
 
 async function ask(question) {
-if (!question || !question.trim()) return;
-const q = question.trim();
+  if (!question || !question.trim()) return;
+  var q = question.trim();
 
-addMessage('user', q);
-const botTyping = addMessage('bot', '', true);
-setBusy(true);
-input.value = '';
+  addMessage('user', q);
+  var botTyping = addMessage('bot', '', true);
+  setBusy(true);
+  input.value = '';
 
-try {
-const resp = await fetch(WORKER_URL, {
-method: 'POST',
-headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({ prompt: q, sessionId })
+  try {
+    var resp = await fetch(WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: q, sessionId: sessionId })
+    });
+
+    var data;
+    var ct = resp.headers.get('Content-Type') || '';
+    if (ct.includes('application/json')) {
+      data = await resp.json();
+    } else {
+      var txt = await resp.text();
+      data = { reply: txt };
+    }
+
+    if (!resp.ok) {
+      var errMsg = data && (data.error || data.message || JSON.stringify(data));
+      updateBubble(botTyping, 'Sorry, there was an error: ' + errMsg);
+    } else {
+      var reply = (data && (data.reply || data.answer || data.result || '')) || '';
+      updateBubble(botTyping, reply || '[No content returned]');
+    }
+  } catch(e) {
+    updateBubble(botTyping, 'Network error. Please try again.');
+  } finally {
+    setBusy(false);
+  }
+}
+
+sendBtn.addEventListener('click', function() { ask(input.value); });
+input.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    ask(input.value);
+  }
 });
 
-let data;
-const ct = resp.headers.get('Content-Type') || '';
-if (ct.includes('application/json')) {
-data = await resp.json();
-} else {
-const txt = await resp.text();
-data = { reply: txt };
-}
-
-if (!resp.ok) {
-const errMsg = data && (data.error || data.message || JSON.stringify(data));
-updateBubble(botTyping, 'Sorry, there was an error: ' + errMsg);
-} else {
-const reply = (data && (data.reply || data.answer || data.result || '')) || '';
-updateBubble(botTyping, reply || '[No content returned]');
-}
-} catch (e) {
-updateBubble(botTyping, 'Network error. Please try again.');
-} finally {
-setBusy(false);
-}
-}
-
-sendBtn.addEventListener('click', () => ask(input.value));
-input.addEventListener('keydown', (e) => {
-if (e.key === 'Enter' && !e.shiftKey) {
-e.preventDefault();
-ask(input.value);
-}
-});
-
-// Optional greeting
 addMessage('bot', 'Hi! Ask me anything about your knowledge base.');
 input.focus();
 </script>
-
 </body>
 </html>
