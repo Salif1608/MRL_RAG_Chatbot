@@ -6,7 +6,7 @@
 <title>RAG Chat</title>
 <style>
 :root { --bg:#0f172a; --card:#111827; --text:#e5e7eb; --muted:#94a3b8; --accent:#22c55e; }
-body { margin:0; background:var(--bg); color:var(--text); font-family:system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+body { margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; }
 .container { max-width:900px; margin:0 auto; height:100svh; display:flex; flex-direction:column; }
 header { padding:14px 16px; background:#0b1220; border-bottom:1px solid #1f2937; display:flex; align-items:center; gap:10px; }
 header h1 { font-size:16px; margin:0; font-weight:600; }
@@ -20,9 +20,10 @@ header h1 { font-size:16px; margin:0; font-weight:600; }
 .inputbar input { flex:1; padding:12px; background:#0f172a; border:1px solid #1f2937; color:var(--text); border-radius:8px; outline:none; }
 .inputbar button { background:var(--accent); color:#052e16; border:none; padding:0 16px; border-radius:8px; font-weight:700; cursor:pointer; }
 .inputbar button:disabled { opacity:0.6; cursor:not-allowed; }
-.typing { display:inline-block; min-width:20px }
-.typing span { display:inline-block; width:6px; height:6px; border-radius:50%; background:#9ca3af; margin-right:4px; animation:b 1.2s infinite }
-.typing span:nth-child(2){ animation-delay:.2s } .typing span:nth-child(3){ animation-delay:.4s }
+.typing { display:inline-block; min-width:20px; }
+.typing span { display:inline-block; width:6px; height:6px; border-radius:50%; background:#9ca3af; margin-right:4px; animation:b 1.2s infinite; }
+.typing span:nth-child(2) { animation-delay:.2s; }
+.typing span:nth-child(3) { animation-delay:.4s; }
 @keyframes b { 0%{opacity:.2} 50%{opacity:1} 100%{opacity:.2} }
 </style>
 </head>
@@ -39,14 +40,14 @@ header h1 { font-size:16px; margin:0; font-weight:600; }
   </div>
 </div>
 <script>
-const WORKER_URL = 'https://rag-chat-proxy.alvisalif1608.workers.dev';
-const chat = document.getElementById('chat');
-const input = document.getElementById('prompt');
-const sendBtn = document.getElementById('send');
+var WORKER_URL = "https://rag-chat-proxy.alvisalif1608.workers.dev";
+var chat = document.getElementById("chat");
+var input = document.getElementById("prompt");
+var sendBtn = document.getElementById("send");
 
-const sessionId = (function() {
+var sessionId = (function() {
   try {
-    var k = 'rag_chat_session';
+    var k = "rag_chat_session";
     var s = sessionStorage.getItem(k);
     if (!s) {
       s = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
@@ -58,66 +59,79 @@ const sessionId = (function() {
   }
 })();
 
+function escapeHtml(str) {
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function addMessage(role, text, typing) {
-  typing = typing || false;
-  var wrap = document.createElement('div');
-  wrap.className = 'msg ' + (role === 'user' ? 'user' : 'bot');
-  var avatarText = role === 'user' ? 'U' : 'A';
-  var bubbleContent = typing
-    ? '<div class="typing"><span></span><span></span><span></span></div>'
-    : escapeHtml(text);
-  wrap.innerHTML =
-    '<div class="avatar">' + avatarText + '</div>' +
-    '<div class="bubble">' + bubbleContent + '</div>';
+  var wrap = document.createElement("div");
+  wrap.className = "msg " + (role === "user" ? "user" : "bot");
+
+  var avatar = document.createElement("div");
+  avatar.className = "avatar";
+  avatar.textContent = (role === "user") ? "U" : "A";
+
+  var bubble = document.createElement("div");
+  bubble.className = "bubble";
+
+  if (typing) {
+    var typingDiv = document.createElement("div");
+    typingDiv.className = "typing";
+    for (var i = 0; i < 3; i++) {
+      var span = document.createElement("span");
+      typingDiv.appendChild(span);
+    }
+    bubble.appendChild(typingDiv);
+  } else {
+    bubble.textContent = text;
+  }
+
+  wrap.appendChild(avatar);
+  wrap.appendChild(bubble);
   chat.appendChild(wrap);
   chat.scrollTop = chat.scrollHeight;
   return wrap;
 }
 
 function updateBubble(wrapper, newText) {
-  var bubble = wrapper.querySelector('.bubble');
-  if (bubble) bubble.innerHTML = escapeHtml(newText);
+  var bubble = wrapper.querySelector(".bubble");
+  if (bubble) {
+    bubble.textContent = newText;
+  }
   chat.scrollTop = chat.scrollHeight;
-}
-
-function escapeHtml(str) {
-  return (String(str || '')).replace(/[&<>"']/g, function(m) {
-    var map = {
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;'
-    };
-    return map[m];
-  });
 }
 
 function setBusy(b) {
   input.disabled = b;
   sendBtn.disabled = b;
-  if (!b) input.focus();
+  if (!b) { input.focus(); }
 }
 
 async function ask(question) {
-  if (!question || !question.trim()) return;
+  if (!question || !question.trim()) { return; }
   var q = question.trim();
 
-  addMessage('user', q);
-  var botTyping = addMessage('bot', '', true);
+  addMessage("user", q, false);
+  var botTyping = addMessage("bot", "", true);
   setBusy(true);
-  input.value = '';
+  input.value = "";
 
   try {
     var resp = await fetch(WORKER_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt: q, sessionId: sessionId })
     });
 
     var data;
-    var ct = resp.headers.get('Content-Type') || '';
-    if (ct.includes('application/json')) {
+    var ct = resp.headers.get("Content-Type") || "";
+
+    if (ct.indexOf("application/json") !== -1) {
       data = await resp.json();
     } else {
       var txt = await resp.text();
@@ -125,28 +139,34 @@ async function ask(question) {
     }
 
     if (!resp.ok) {
-      var errMsg = data && (data.error || data.message || JSON.stringify(data));
-      updateBubble(botTyping, 'Sorry, there was an error: ' + errMsg);
+      var errMsg = (data && (data.error || data.message)) ? (data.error || data.message) : JSON.stringify(data);
+      updateBubble(botTyping, "Sorry, there was an error: " + errMsg);
     } else {
-      var reply = (data && (data.reply || data.answer || data.result || '')) || '';
-      updateBubble(botTyping, reply || '[No content returned]');
+      var reply = "";
+      if (data) {
+        reply = data.reply || data.answer || data.result || "";
+      }
+      updateBubble(botTyping, reply || "[No content returned]");
     }
   } catch(e) {
-    updateBubble(botTyping, 'Network error. Please try again.');
+    updateBubble(botTyping, "Network error. Please try again.");
   } finally {
     setBusy(false);
   }
 }
 
-sendBtn.addEventListener('click', function() { ask(input.value); });
-input.addEventListener('keydown', function(e) {
-  if (e.key === 'Enter' && !e.shiftKey) {
+sendBtn.addEventListener("click", function() {
+  ask(input.value);
+});
+
+input.addEventListener("keydown", function(e) {
+  if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
     ask(input.value);
   }
 });
 
-addMessage('bot', 'Hi! Ask me anything about your knowledge base.');
+addMessage("bot", "Hi! Ask me anything about your knowledge base.", false);
 input.focus();
 </script>
 </body>
