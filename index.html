@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAG Chat</title>
+<style>
+:root { --bg:#0f172a; --card:#111827; --text:#e5e7eb; --muted:#94a3b8; --accent:#22c55e; }
+body { margin:0; background:var(--bg); color:var(--text); font-family:system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+.container { max-width:900px; margin:0 auto; height:100svh; display:flex; flex-direction:column; }
+header { padding:14px 16px; background:#0b1220; border-bottom:1px solid #1f2937; display:flex; align-items:center; gap:10px; }
+header h1 { font-size:16px; margin:0; font-weight:600; }
+.chat { flex:1; overflow:auto; padding:16px; }
+.msg { display:flex; gap:12px; margin-bottom:14px; align-items:flex-start; }
+.msg .avatar { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#1f2937; color:#cbd5e1; font-weight:700; }
+.msg .bubble { background:var(--card); padding:12px 14px; border-radius:10px; max-width:75%; white-space:pre-wrap; line-height:1.4; }
+.msg.user .bubble { background:#1e293b; }
+.muted { color:var(--muted); font-size:12px; }
+.inputbar { padding:12px; border-top:1px solid #1f2937; background:#0b1220; display:flex; gap:8px; }
+.inputbar input { flex:1; padding:12px; background:#0f172a; border:1px solid #1f2937; color:var(--text); border-radius:8px; outline:none; }
+.inputbar button { background:var(--accent); color:#052e16; border:none; padding:0 16px; border-radius:8px; font-weight:700; cursor:pointer; }
+.inputbar button:disabled { opacity:0.6; cursor:not-allowed; }
+.typing { display:inline-block; min-width:20px }
+.typing span { display:inline-block; width:6px; height:6px; border-radius:50%; background:#9ca3af; margin-right:4px; animation:b 1.2s infinite }
+.typing span:nth-child(2){ animation-delay:.2s } .typing span:nth-child(3){ animation-delay:.4s }
+@keyframes b { 0%{opacity:.2} 50%{opacity:1} 100%{opacity:.2} }
+</style>
+</head>
+<body>
+<div class="container">
+<header>
+<h1>RAG Chat</h1>
+<div class="muted">Ask anything about your knowledge base</div>
+</header>
+<div id="chat" class="chat"></div>
+<div class="inputbar">
+<input id="prompt" type="text" placeholder="Type your question and press Enter..." autocomplete="off" />
+<button id="send">Send</button>
+</div>
+</div>
+<script>
+const WORKER_URL = 'https://rag-chat-proxy.alvisalif1608.workers.dev/'; // e.g. https://rag-chat-proxy.your-subdomain.workers.dev
+const chat = document.getElementById('chat');
+const input = document.getElementById('prompt');
+const sendBtn = document.getElementById('send');
+
+// Persist a sessionId per browser tab to allow your Flow/U-KNOW to use sessions if desired
+const sessionId = (() => {
+try {
+const k = 'rag_chat_session';
+let s = sessionStorage.getItem(k);
+if (!s) { s = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())); sessionStorage.setItem(k, s); }
+return s;
+} catch { return String(Date.now()); }
+})();
+
+function addMessage(role, text, typing=false) {
+const wrap = document.createElement('div');
+wrap.className = 'msg ' + (role === 'user' ? 'user' : 'bot');
+wrap.innerHTML = <div class="avatar">${role === 'user' ? 'U' : 'A'}</div> <div class="bubble">${typing ? '<div class="typing"><span></span><span></span><span></span></div>' : escapeHtml(text)}</div> ;
+chat.appendChild(wrap);
+chat.scrollTop = chat.scrollHeight;
+return wrap;
+}
+
+function updateBubble(wrapper, newText) {
+const bubble = wrapper.querySelector('.bubble');
+if (bubble) bubble.innerHTML = escapeHtml(newText);
+chat.scrollTop = chat.scrollHeight;
+}
+
+function escapeHtml(str) {
+return (String(str || '')).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+function setBusy(b) {
+input.disabled = b;
+sendBtn.disabled = b;
+if (!b) input.focus();
+}
+
+async function ask(question) {
+if (!question || !question.trim()) return;
+const q = question.trim();
+
+addMessage('user', q);
+const botTyping = addMessage('bot', '', true);
+setBusy(true);
+input.value = '';
+
+try {
+const resp = await fetch(WORKER_URL, {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ prompt: q, sessionId })
+});
+
+let data;
+const ct = resp.headers.get('Content-Type') || '';
+if (ct.includes('application/json')) {
+data = await resp.json();
+} else {
+const txt = await resp.text();
+data = { reply: txt };
+}
+
+if (!resp.ok) {
+const errMsg = data && (data.error || data.message || JSON.stringify(data));
+updateBubble(botTyping, 'Sorry, there was an error: ' + errMsg);
+} else {
+const reply = (data && (data.reply || data.answer || data.result || '')) || '';
+updateBubble(botTyping, reply || '[No content returned]');
+}
+} catch (e) {
+updateBubble(botTyping, 'Network error. Please try again.');
+} finally {
+setBusy(false);
+}
+}
+
+sendBtn.addEventListener('click', () => ask(input.value));
+input.addEventListener('keydown', (e) => {
+if (e.key === 'Enter' && !e.shiftKey) {
+e.preventDefault();
+ask(input.value);
+}
+});
+
+// Optional greeting
+addMessage('bot', 'Hi! Ask me anything about your knowledge base.');
+input.focus();
+</script>
+
+</body>
+</html>
